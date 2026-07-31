@@ -1,0 +1,33 @@
+name: Publicar fuente de JLG Cargo
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  unpack-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar fuente cargada
+        shell: bash
+        run: |
+          if [ ! -f jlg-cargo-source.tgz ]; then
+            echo "No hay un paquete pendiente."
+            exit 0
+          fi
+
+          tar -xzf jlg-cargo-source.tgz
+          rm jlg-cargo-source.tgz
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publicar mejoras de JLG Cargo"
+          git push
