@@ -4,7 +4,7 @@ import type {
   WarehouseMovement,
   WarehouseReceiptStatus,
 } from '../../types/warehouse'
-import type { WarehouseReceiptListItem } from './receiptService'
+import { getWarehouseReceipts, type WarehouseReceiptListItem } from './receiptService'
 
 export type WarehouseDashboardData = {
   manifests: number
@@ -24,6 +24,44 @@ export type MovementWithLocations = WarehouseMovement & {
   performed_by_name?: string | null
   from_location?: { code: string } | null
   to_location?: { code: string } | null
+}
+
+export type WarehouseInventoryItem = WarehouseReceiptListItem & {
+  dispatched_pieces: number
+  dispatched_weight_kg: number
+  remaining_pieces: number
+  remaining_weight_kg: number
+}
+
+export async function getWarehouseInventory(): Promise<WarehouseInventoryItem[]> {
+  const [receipts, dispatchResult] = await Promise.all([
+    getWarehouseReceipts(),
+    supabase
+      .from('warehouse_dispatches')
+      .select('receipt_id, pieces_dispatched, weight_dispatched_kg, dispatch_status'),
+  ])
+
+  if (dispatchResult.error) throw new Error(dispatchResult.error.message)
+
+  const totals = new Map<string, { pieces: number; weight: number }>()
+  for (const dispatch of dispatchResult.data || []) {
+    if (!['confirmed', 'delivered'].includes(String(dispatch.dispatch_status))) continue
+    const current = totals.get(String(dispatch.receipt_id)) || { pieces: 0, weight: 0 }
+    current.pieces += Number(dispatch.pieces_dispatched || 0)
+    current.weight += Number(dispatch.weight_dispatched_kg || 0)
+    totals.set(String(dispatch.receipt_id), current)
+  }
+
+  return receipts.map((receipt) => {
+    const dispatched = totals.get(receipt.id) || { pieces: 0, weight: 0 }
+    return {
+      ...receipt,
+      dispatched_pieces: dispatched.pieces,
+      dispatched_weight_kg: dispatched.weight,
+      remaining_pieces: Math.max(Number(receipt.pieces || 0) - dispatched.pieces, 0),
+      remaining_weight_kg: Math.max(Number(receipt.weight_kg || 0) - dispatched.weight, 0),
+    }
+  })
 }
 
 async function loadWarehouseDashboardSource() {
@@ -142,6 +180,9 @@ export async function moveWarehouseReceipt(payload: {
     p_operator_name: payload.operatorName || null,
   })
   if (error) throw new Error(error.message)
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error('El BL ya fue despachado o no admite nuevos movimientos.')
+  }
   return data
 }
 

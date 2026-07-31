@@ -446,7 +446,7 @@ export async function updateReceiptInspection(
   receiptId: string,
   payload: UpdateReceiptInspectionPayload
 ): Promise<WarehouseReceiptDetail> {
-  const { error } = await supabase.rpc('inspect_warehouse_receipt', {
+  const { data, error } = await supabase.rpc('inspect_warehouse_receipt', {
     p_receipt_id: receiptId,
     p_pieces: Number(payload.pieces || 0),
     p_weight_kg: Number(payload.weight_kg || 0),
@@ -465,6 +465,10 @@ export async function updateReceiptInspection(
 
   if (error) {
     throw new Error(error.message)
+  }
+
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error('El BL ya fue despachado o no admite nuevas inspecciones.')
   }
 
   const updated = await getWarehouseReceiptById(receiptId)
