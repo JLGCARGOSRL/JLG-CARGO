@@ -62,7 +62,7 @@ export async function getCustomsVerificationQueue(): Promise<CustomsVerification
       customers (company_name, legal_name, customer_code),
       warehouse_locations (code),
       warehouse_manifests (manifest_number, master_bl, container_number, customs_administration),
-      warehouse_manifest_items (document_number, house_bl)
+      warehouse_manifest_items!warehouse_receipts_manifest_item_id_fkey (document_number, house_bl)
     `)
     .not('manifest_id', 'is', null)
     .order('updated_at', { ascending: false })
