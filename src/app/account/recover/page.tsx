@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CheckCircle2, KeyRound, LoaderCircle, ShieldCheck, TriangleAlert } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { supabase } from "../../../lib/supabase/client";
+import { isPasswordRecoveryRedirect, supabase } from "../../../lib/supabase/client";
 
 function isStrongPassword(password: string) {
   return password.length >= 10
@@ -11,6 +11,19 @@ function isStrongPassword(password: string) {
     && /[a-z]/.test(password)
     && /\d/.test(password)
     && /[^A-Za-z0-9]/.test(password);
+}
+
+function recoveryErrorMessage(code?: string, message?: string) {
+  if (code === "same_password" || message?.toLowerCase().includes("different from the old password")) {
+    return "La contraseña nueva debe ser diferente de la contraseña anterior.";
+  }
+  if (code === "weak_password") {
+    return "Supabase rechazó la contraseña por seguridad. Use una combinación distinta con mayúscula, minúscula, número y símbolo.";
+  }
+  if (code === "session_not_found" || code === "refresh_token_not_found" || code === "bad_jwt" || message?.toLowerCase().includes("expired")) {
+    return "El enlace venció o ya fue utilizado. Solicite un enlace de recuperación nuevo.";
+  }
+  return "No fue posible actualizar la contraseña. Solicite un enlace nuevo e inténtelo otra vez.";
 }
 
 export default function RecoverAccountPage() {
@@ -24,15 +37,23 @@ export default function RecoverAccountPage() {
 
   useEffect(() => {
     let mounted = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setHasSession(Boolean(data.session));
-      setChecking(false);
-    });
+    let recoveryEventReceived = false;
+    const arrivedFromRecoveryLink = isPasswordRecoveryRedirect();
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-      if (event === "PASSWORD_RECOVERY" || session) setHasSession(true);
+      if (event === "PASSWORD_RECOVERY") {
+        recoveryEventReceived = true;
+        setHasSession(Boolean(session));
+        setChecking(false);
+      }
+    });
+
+    void supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!mounted) return;
+      const validRecoverySession = Boolean(data.session) && (arrivedFromRecoveryLink || recoveryEventReceived);
+      setHasSession(validRecoverySession);
+      if (sessionError) setError(recoveryErrorMessage(sessionError.code, sessionError.message));
       setChecking(false);
     });
 
@@ -57,7 +78,7 @@ export default function RecoverAccountPage() {
     setSaving(true);
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) {
-      setError("El enlace venció o no fue posible actualizar la contraseña. Solicite uno nuevo.");
+      setError(recoveryErrorMessage(updateError.code, updateError.message));
       setSaving(false);
       return;
     }
