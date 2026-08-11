@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { useAuth } from "../contexts/authContext";
 import Sidebar from "./sidebar";
 
-const PUBLIC_ROUTES = ["/login", "/registro-asociado"];
+const PUBLIC_ROUTES = ["/login", "/forgot-password", "/account/recover", "/registro-asociado"];
 const LOGIN_ROUTE = "/login";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
