@@ -11,6 +11,47 @@ test('the sidebar exposes only implemented modules', async () => {
   assert.doesNotMatch(source, /href: "\/settings"/)
   assert.doesNotMatch(source, /href: "\/warehouse"/)
   assert.match(source, /href: "\/warehouse\/billing"/)
+  assert.match(source, /href: "\/communications"/)
+})
+
+test('communications preserve server dates and audit manual evidence', async () => {
+  const [page, service, migration] = await Promise.all([
+    read('src/app/communications/page.tsx'),
+    read('src/lib/services/communicationService.ts'),
+    read('supabase/migrations/202608120016_communications_and_evidence.sql'),
+  ])
+  assert.match(page, /Fecha del servidor/)
+  assert.match(page, /Fecha declarada/)
+  assert.match(page, /fecha real de creación/i)
+  assert.match(page, /type="date"/)
+  assert.match(service, /record_manual_communication/)
+  assert.match(migration, /Evidence dates and origin are immutable/)
+  assert.match(migration, /Communication evidence cannot be deleted/)
+  assert.match(migration, /communication_audit_logs/)
+  assert.match(migration, /p_declared_at > now\(\)/)
+})
+
+test('password recovery only accepts a real recovery callback and explains failures', async () => {
+  const [client, page] = await Promise.all([
+    read('src/lib/supabase/client.ts'),
+    read('src/app/account/recover/page.tsx'),
+  ])
+
+  assert.match(client, /initialAuthRedirectType/)
+  assert.match(client, /initialAuthRedirectType === 'recovery'/)
+  assert.match(page, /event === "PASSWORD_RECOVERY"/)
+  assert.match(page, /arrivedFromRecoveryLink \|\| recoveryEventReceived/)
+  assert.doesNotMatch(page, /if \(event === "PASSWORD_RECOVERY" \|\| session\)/)
+  assert.match(page, /same_password/)
+  assert.match(page, /session_not_found/)
+})
+
+test('production keeps using the original warehouse Supabase project during migration', async () => {
+  const config = await read('next.config.ts')
+  assert.match(config, /LEGACY_NEXT_PUBLIC_SUPABASE_URL/)
+  assert.match(config, /LEGACY_NEXT_PUBLIC_SUPABASE_ANON_KEY/)
+  assert.match(config, /NEXT_PUBLIC_SUPABASE_URL: legacySupabaseUrl/)
+  assert.match(config, /NEXT_PUBLIC_SUPABASE_ANON_KEY: legacySupabaseAnonKey/)
 })
 
 test('legacy and duplicate dashboard routes remain compatible through redirects', async () => {
@@ -139,6 +180,25 @@ test('authenticated users can keep the public associate form open', async () => 
   assert.match(source, /const isLogin = pathname === LOGIN_ROUTE/)
   assert.match(source, /if \(user && isLogin\) router\.replace/)
   assert.doesNotMatch(source, /if \(user && isPublic\) router\.replace/)
+})
+
+test('login provides a complete password recovery flow', async () => {
+  const [login, request, recover, shell] = await Promise.all([
+    read('src/app/login/page.tsx'),
+    read('src/app/forgot-password/page.tsx'),
+    read('src/app/account/recover/page.tsx'),
+    read('src/components/appShell.tsx'),
+  ])
+
+  assert.match(login, /href="\/forgot-password"/)
+  assert.match(request, /resetPasswordForEmail/)
+  assert.match(request, /\/account\/recover/)
+  assert.match(request, /Si existe una cuenta asociada/)
+  assert.match(recover, /PASSWORD_RECOVERY/)
+  assert.match(recover, /updateUser\(\{ password \}\)/)
+  assert.match(recover, /password_recovered/)
+  assert.match(shell, /"\/forgot-password"/)
+  assert.match(shell, /"\/account\/recover"/)
 })
 
 test('selected invoices can be downloaded as a real PDF file', async () => {
