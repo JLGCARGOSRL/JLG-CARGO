@@ -8,16 +8,20 @@ import {
   Check,
   CheckCircle2,
   FileCheck2,
+  Database,
   LoaderCircle,
   LockKeyhole,
   Plus,
+  Search,
   Send,
   ShieldCheck,
   Trash2,
   Upload,
   Users,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "../../contexts/authContext";
+import { supabase } from "../../lib/supabase/client";
 import type {
   BankReference,
   BusinessAssociateFormData,
@@ -28,6 +32,7 @@ const inputClass =
   "mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100";
 const sectionClass =
   "rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7";
+const PAGE_STARTED_AT = Date.now();
 
 const emptyContact = (): RepeatedContact => ({
   name: "",
@@ -44,6 +49,36 @@ const emptyBankReference = (): BankReference => ({
   accountNumber: "",
 });
 
+type CustomerPrefill = {
+  id: string;
+  customer_code: string | null;
+  company_name: string | null;
+  legal_name: string | null;
+  trade_name: string | null;
+  customer_type: string | null;
+  partner_type: string | null;
+  supplier_category: string | null;
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile_phone: string | null;
+  whatsapp: string | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  postal_code: string | null;
+  website: string | null;
+  tax_id: string | null;
+  payment_terms: number | null;
+  preferred_transport: string | null;
+  incoterm: string | null;
+  rnc_up_to_date: boolean | null;
+  rnc_certificate_up_to_date: boolean | null;
+  manager_id_copy: boolean | null;
+  has_certifications: boolean | null;
+  certifications_details: string | null;
+};
+
 const initialForm: BusinessAssociateFormData = {
   associateTypes: [],
   clientTypes: [],
@@ -54,16 +89,21 @@ const initialForm: BusinessAssociateFormData = {
     hasCertifications: "",
     certifications: [],
     otherCertification: "",
+    customerCode: "",
     commercialName: "",
+    legalName: "",
     rnc: "",
     economicActivity: "",
     regime: "",
     address: "",
     sector: "",
     city: "",
+    country: "",
+    postalCode: "",
     phone: "",
     fax: "",
     email: "",
+    website: "",
     description: "",
   },
   representative: {
@@ -149,6 +189,7 @@ function toggleValue(values: string[], value: string) {
 }
 
 export default function BusinessAssociateRegistrationPage() {
+  const { user, loading: authLoading } = useAuth();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(initialForm);
   const [files, setFiles] = useState<Record<string, File | null>>({});
@@ -156,7 +197,172 @@ export default function BusinessAssociateRegistrationPage() {
   const [error, setError] = useState("");
   const [trackingCode, setTrackingCode] = useState("");
   const [signatureBlob, setSignatureBlob] = useState<Blob | null>(null);
-  const startedAt = useRef(Date.now());
+  const startedAt = useRef(PAGE_STARTED_AT);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<CustomerPrefill[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerPrefill | null>(null);
+  const [prefillCount, setPrefillCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const timer = window.setTimeout(async () => {
+      setCustomersLoading(true);
+      let query = supabase
+        .from("customers")
+        .select("id, customer_code, company_name, legal_name, trade_name, customer_type, partner_type, supplier_category, contact_name, email, phone, mobile_phone, whatsapp, address, city, country, postal_code, website, tax_id, payment_terms, preferred_transport, incoterm, rnc_up_to_date, rnc_certificate_up_to_date, manager_id_copy, has_certifications, certifications_details")
+        .eq("status", "active")
+        .order("company_name", { ascending: true })
+        .limit(20);
+
+      const term = customerSearch.trim();
+      if (term) {
+        const safeTerm = term.replace(/[,%()]/g, " ").trim();
+        query = query.or(
+          `company_name.ilike.%${safeTerm}%,legal_name.ilike.%${safeTerm}%,trade_name.ilike.%${safeTerm}%,customer_code.ilike.%${safeTerm}%,tax_id.ilike.%${safeTerm}%`
+        );
+      }
+
+      const { data } = await query;
+      setCustomerResults((data || []) as CustomerPrefill[]);
+      setCustomersLoading(false);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [customerSearch, user]);
+
+  async function prefillCustomer(customer: CustomerPrefill) {
+    setSelectedCustomer(customer);
+    setCustomerSearch("");
+
+    const { data: storedDocuments } = await supabase
+      .from("customer_documents")
+      .select("document_name, document_type")
+      .eq("customer_id", customer.id);
+
+    const documentText = (storedDocuments || [])
+      .flatMap((document) => [document.document_name, document.document_type])
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const confirmedDocuments = new Set<string>();
+    if (
+      customer.rnc_up_to_date ||
+      customer.rnc_certificate_up_to_date ||
+      documentText.includes("rnc")
+    ) confirmedDocuments.add("rnc");
+    if (customer.manager_id_copy || /c[eé]dula|identificaci[oó]n/.test(documentText)) {
+      confirmedDocuments.add("identificaciones");
+    }
+    if (/registro mercantil/.test(documentText)) confirmedDocuments.add("registro_mercantil");
+    if (/estatuto/.test(documentText)) confirmedDocuments.add("estatutos");
+    if (/asamblea/.test(documentText)) confirmedDocuments.add("ultima_asamblea");
+    if (customer.has_certifications || /certificaci[oó]n|basc|oea|c-tpat/.test(documentText)) {
+      confirmedDocuments.add("certificaciones");
+    }
+
+    const partnerTypes = customer.partner_type === "both"
+      ? ["cliente", "suplidor"]
+      : customer.partner_type === "supplier"
+        ? ["suplidor"]
+        : ["cliente"];
+    const supplierLabels: Record<string, string> = {
+      trucking_company: "Transporte",
+      carrier: "Transporte",
+      consulting: "Servicios",
+      technology: "Servicios",
+      security: "Servicios",
+      other: "Servicios",
+    };
+    const certificationDetails = customer.certifications_details || "";
+    const knownCertifications = ["BASC", "OEA", "C-TPAT"].filter((item) =>
+      certificationDetails.toUpperCase().includes(item)
+    );
+    const commercialName = customer.trade_name || customer.company_name || customer.legal_name || "";
+    const legalName = customer.legal_name || customer.company_name || "";
+    const contact = emptyContact();
+    contact.name = customer.contact_name || "";
+    contact.phone = customer.phone || customer.mobile_phone || customer.whatsapp || "";
+    contact.mobile = customer.mobile_phone || customer.whatsapp || "";
+    contact.email = customer.email || "";
+    contact.company = commercialName;
+
+    const nextForm: BusinessAssociateFormData = {
+      ...initialForm,
+      associateTypes: partnerTypes,
+      supplierTypes: customer.supplier_category && supplierLabels[customer.supplier_category]
+        ? [supplierLabels[customer.supplier_category]]
+        : [],
+      company: {
+        ...initialForm.company,
+        customerCode: customer.customer_code || "",
+        commercialName,
+        legalName,
+        rnc: customer.tax_id || "",
+        address: customer.address || "",
+        city: customer.city || "",
+        country: customer.country || "",
+        postalCode: customer.postal_code || "",
+        phone: customer.phone || customer.mobile_phone || "",
+        email: customer.email || "",
+        website: customer.website || "",
+        hasCertifications: customer.has_certifications ? "Sí" : "",
+        certifications: knownCertifications,
+        otherCertification:
+          customer.has_certifications && knownCertifications.length === 0
+            ? certificationDetails
+            : "",
+        description: [
+          customer.preferred_transport
+            ? `Transporte preferido: ${customer.preferred_transport}`
+            : "",
+          customer.incoterm ? `Incoterm: ${customer.incoterm}` : "",
+        ].filter(Boolean).join(" · "),
+      },
+      representative: {
+        ...initialForm.representative,
+        fullName: customer.contact_name || "",
+        phone: customer.phone || "",
+        mobile: customer.mobile_phone || customer.whatsapp || "",
+        email: customer.email || "",
+      },
+      legalRepresentatives: customer.contact_name ? [{ ...contact }] : [emptyContact()],
+      contacts: {
+        ...initialForm.contacts,
+        commercial: contact,
+      },
+      payment: {
+        ...initialForm.payment,
+        method: Number(customer.payment_terms || 0) > 0 ? "credito" : "contado",
+        creditDays: Number(customer.payment_terms || 0) > 0
+          ? String(customer.payment_terms)
+          : "",
+      },
+      documentsConfirmed: Array.from(confirmedDocuments),
+      authorization: {
+        ...initialForm.authorization,
+        applicantName: customer.contact_name || "",
+      },
+    };
+
+    const countValues = (value: unknown): number => {
+      if (typeof value === "string") return value.trim() ? 1 : 0;
+      if (typeof value === "boolean") return value ? 1 : 0;
+      if (Array.isArray(value)) return value.reduce((sum, item) => sum + countValues(item), 0);
+      if (value && typeof value === "object") {
+        return Object.values(value).reduce((sum, item) => sum + countValues(item), 0);
+      }
+      return 0;
+    };
+
+    setForm(nextForm);
+    setFiles({});
+    setSignatureBlob(null);
+    setPrefillCount(countValues(nextForm));
+    setStep(0);
+    setError("");
+  }
 
   const completed = useMemo(() => {
     return [
@@ -365,6 +571,97 @@ export default function BusinessAssociateRegistrationPage() {
               ))}
             </div>
 
+            {!authLoading && user && (
+              <section className="mb-6 rounded-3xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
+                      <Database size={21} />
+                    </span>
+                    <div>
+                      <p className="font-black text-slate-950">Precargar cliente de la base de datos</p>
+                      <p className="mt-1 text-sm leading-5 text-slate-600">
+                        Busque por nombre, código o RNC. Se completará toda la información disponible.
+                      </p>
+                    </div>
+                  </div>
+                  {selectedCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer(null);
+                        setPrefillCount(0);
+                        setForm(initialForm);
+                        setFiles({});
+                        setSignatureBlob(null);
+                      }}
+                      className="shrink-0 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                    >
+                      Limpiar selección
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative mt-4">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={19} />
+                  <input
+                    type="search"
+                    value={customerSearch}
+                    onChange={(event) => setCustomerSearch(event.target.value)}
+                    placeholder="Ej. Importadora Beijing, JLGC-CUS-00025 o RNC..."
+                    className="w-full rounded-2xl border border-slate-300 bg-white py-3.5 pl-12 pr-4 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                  />
+                </div>
+
+                {!selectedCustomer && (
+                  <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white">
+                    {customersLoading ? (
+                      <p className="p-4 text-sm font-semibold text-slate-500">Buscando clientes...</p>
+                    ) : customerResults.length ? (
+                      customerResults.map((customer) => (
+                        <button
+                          key={customer.id}
+                          type="button"
+                          onClick={() => void prefillCustomer(customer)}
+                          className="flex w-full items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-blue-50"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-bold text-slate-900">
+                              {customer.company_name || customer.legal_name || customer.trade_name || "Cliente sin nombre"}
+                            </span>
+                            <span className="mt-0.5 block truncate text-xs text-slate-500">
+                              {[customer.customer_code, customer.tax_id ? `RNC ${customer.tax_id}` : "", customer.email]
+                                .filter(Boolean)
+                                .join(" · ") || "Sin datos adicionales"}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-xs font-black text-blue-700">Seleccionar</span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="p-4 text-sm font-semibold text-slate-500">No se encontraron clientes.</p>
+                    )}
+                  </div>
+                )}
+
+                {selectedCustomer && (
+                  <div className="mt-4 flex flex-col gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-emerald-950">
+                        {selectedCustomer.company_name || selectedCustomer.legal_name || selectedCustomer.trade_name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-emerald-800">
+                        {prefillCount} datos disponibles completados. Revise los campos pendientes antes de enviar.
+                      </p>
+                    </div>
+                    <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-black text-white">
+                      <Check size={14} /> Datos cargados
+                    </span>
+                  </div>
+                )}
+              </section>
+            )}
+
             {error && (
               <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800">
                 {error}
@@ -473,6 +770,13 @@ export default function BusinessAssociateRegistrationPage() {
                 <section className={sectionClass}>
                   <SectionTitle title="Información de la empresa" />
                   <div className="grid gap-5 sm:grid-cols-2">
+                    <Field label="Código de cliente">
+                      <input
+                        className={inputClass}
+                        value={form.company.customerCode}
+                        onChange={(event) => updateCompany("customerCode", event.target.value)}
+                      />
+                    </Field>
                     <Field label="Nombre comercial *">
                       <input
                         required
@@ -481,6 +785,13 @@ export default function BusinessAssociateRegistrationPage() {
                         onChange={(event) =>
                           updateCompany("commercialName", event.target.value)
                         }
+                      />
+                    </Field>
+                    <Field label="Razón social">
+                      <input
+                        className={inputClass}
+                        value={form.company.legalName}
+                        onChange={(event) => updateCompany("legalName", event.target.value)}
                       />
                     </Field>
                     <Field label="RNC">
@@ -538,6 +849,20 @@ export default function BusinessAssociateRegistrationPage() {
                         onChange={(event) => updateCompany("city", event.target.value)}
                       />
                     </Field>
+                    <Field label="País">
+                      <input
+                        className={inputClass}
+                        value={form.company.country}
+                        onChange={(event) => updateCompany("country", event.target.value)}
+                      />
+                    </Field>
+                    <Field label="Código postal">
+                      <input
+                        className={inputClass}
+                        value={form.company.postalCode}
+                        onChange={(event) => updateCompany("postalCode", event.target.value)}
+                      />
+                    </Field>
                     <Field label="Teléfono">
                       <input
                         type="tel"
@@ -555,6 +880,14 @@ export default function BusinessAssociateRegistrationPage() {
                         className={inputClass}
                         value={form.company.email}
                         onChange={(event) => updateCompany("email", event.target.value)}
+                      />
+                    </Field>
+                    <Field label="Sitio web">
+                      <input
+                        type="url"
+                        className={inputClass}
+                        value={form.company.website}
+                        onChange={(event) => updateCompany("website", event.target.value)}
                       />
                     </Field>
                     <Field label="Descripción de la empresa o servicio" wide>
@@ -935,6 +1268,12 @@ export default function BusinessAssociateRegistrationPage() {
                         }
                       >
                         <option value="">Seleccione</option>
+                        {form.payment.creditDays &&
+                          !["15", "30", "60", "90"].includes(form.payment.creditDays) && (
+                            <option value={form.payment.creditDays}>
+                              {form.payment.creditDays} días
+                            </option>
+                          )}
                         {["15", "30", "60", "90"].map((days) => (
                           <option key={days} value={days}>
                             {days} días
@@ -978,19 +1317,19 @@ export default function BusinessAssociateRegistrationPage() {
                       <label
                         key={document.id}
                         className={`flex cursor-pointer items-center gap-4 rounded-2xl border p-4 transition ${
-                          files[document.id]
+                          files[document.id] || form.documentsConfirmed.includes(document.id)
                             ? "border-emerald-300 bg-emerald-50"
                             : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/40"
                         }`}
                       >
                         <span
                           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                            files[document.id]
+                            files[document.id] || form.documentsConfirmed.includes(document.id)
                               ? "bg-emerald-600 text-white"
                               : "bg-slate-100 text-slate-500"
                           }`}
                         >
-                          {files[document.id] ? (
+                          {files[document.id] || form.documentsConfirmed.includes(document.id) ? (
                             <Check size={20} />
                           ) : (
                             <Upload size={20} />
@@ -1001,7 +1340,10 @@ export default function BusinessAssociateRegistrationPage() {
                             {document.label}
                           </span>
                           <span className="mt-0.5 block truncate text-xs text-slate-500">
-                            {files[document.id]?.name || "Seleccionar archivo"}
+                            {files[document.id]?.name ||
+                              (form.documentsConfirmed.includes(document.id)
+                                ? "Documento ya registrado en el expediente del cliente"
+                                : "Seleccionar archivo")}
                           </span>
                         </span>
                         <input
