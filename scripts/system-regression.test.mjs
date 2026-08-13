@@ -52,6 +52,19 @@ test('administrators can bulk import authentic email files without duplicates', 
   assert.match(migration, /on conflict do nothing/i)
 })
 
+test('email reprocessing decodes MIME content and repairs existing records', async () => {
+  const [parser, migration] = await Promise.all([
+    read('src/lib/email/rfc822.ts'),
+    read('supabase/migrations/202608120019_reprocess_imported_emails.sql'),
+  ])
+  assert.match(parser, /multipart\//)
+  assert.match(parser, /quotedPrintableBytes/)
+  assert.match(parser, /decodeHeader/)
+  assert.match(parser, /TextDecoder/)
+  assert.match(migration, /updated_count/)
+  assert.match(migration, /update public\.communication_records/)
+})
+
 test('password recovery only accepts a real recovery callback and explains failures', async () => {
   const [client, page] = await Promise.all([
     read('src/lib/supabase/client.ts'),
