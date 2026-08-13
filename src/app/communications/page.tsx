@@ -1,4 +1,4 @@
-other: "Web directo""use client";
+"use client";
 
 import {
   CalendarDays, Eye, FileClock, Filter, Mail, MessageCircle,
