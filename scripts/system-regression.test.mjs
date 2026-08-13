@@ -65,6 +65,16 @@ test('email reprocessing decodes MIME content and repairs existing records', asy
   assert.match(migration, /update public\.communication_records/)
 })
 
+test('communications show the exact database total beyond the 500-row table limit', async () => {
+  const [page, service] = await Promise.all([
+    read('src/app/communications/page.tsx'),
+    read('src/lib/services/communicationService.ts'),
+  ])
+  assert.match(service, /count: "exact"/)
+  assert.match(service, /total: count/)
+  assert.match(page, /totalRecords/)
+})
+
 test('password recovery only accepts a real recovery callback and explains failures', async () => {
   const [client, page] = await Promise.all([
     read('src/lib/supabase/client.ts'),
