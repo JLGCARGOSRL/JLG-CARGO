@@ -39,5 +39,5 @@ export async function recordManualCommunication(input: ManualCommunicationInput)
 export async function importEmailCommunications(records: ImportedEmailRecord[]) {
   const { data, error } = await supabase.rpc("import_email_communications", { p_records: records });
   if (error) throw new Error(error.message);
-  return data as { inserted: number; duplicates: number };
+  return data as { inserted: number; updated: number; duplicates: number };
 }
