@@ -2,10 +2,11 @@
 
 import {
   CalendarDays, Eye, FileClock, Filter, Mail, MessageCircle,
-  Plus, RefreshCw, Search, ShieldCheck, Upload, X,
+  Forward, Plus, RefreshCw, Search, ShieldCheck, Upload, X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../contexts/authContext";
+import { supabase } from "../../lib/supabase/client";
 import { getCommunicationRecords, recordManualCommunication } from "../../lib/services/communicationService";
 import type { CommunicationChannel, CommunicationDirection, CommunicationRecord } from "../../types/communication";
 import BulkEmailImportModal from "../../components/bulkEmailImportModal";
@@ -45,6 +46,8 @@ export default function CommunicationsPage() {
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<CommunicationRecord | null>(null);
+  const [forwardRecord, setForwardRecord] = useState<CommunicationRecord | null>(null);
+  const [forwarding, setForwarding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -102,6 +105,31 @@ export default function CommunicationsPage() {
     } finally { setSaving(false); }
   }
 
+  async function submitForward(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!forwardRecord) return;
+    setForwarding(true);
+    setMessage("");
+    const form = new FormData(event.currentTarget);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("La sesión ha expirado.");
+      const response = await fetch(`/api/communications/${forwardRecord.id}/forward`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ to: String(form.get("to")), note: String(form.get("note")) }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "No se pudo reenviar el correo.");
+      setForwardRecord(null);
+      setSelectedRecord(null);
+      setMessage("Correo reenviado y registrado en la cronología.");
+      await load();
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "No se pudo reenviar el correo.");
+    } finally { setForwarding(false); }
+  }
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -132,7 +160,8 @@ export default function CommunicationsPage() {
       </section>
 
       {showImport && <BulkEmailImportModal onClose={() => setShowImport(false)} onImported={async (notice) => { setMessage(notice); await load(); }} />}
-      {selectedRecord && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4" role="dialog" aria-modal="true" aria-label="Lectura de correo"><article className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><header className="flex items-start justify-between border-b bg-slate-50 p-6"><div className="min-w-0 pr-4"><p className="text-sm font-bold uppercase tracking-wider text-blue-700">{directionLabels[selectedRecord.direction]} · {displayDate(effectiveDate(selectedRecord))}</p><h2 className="mt-2 text-2xl font-black text-slate-950">{selectedRecord.subject}</h2></div><button onClick={() => setSelectedRecord(null)} className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-200" aria-label="Cerrar lectura"><X /></button></header><div className="grid gap-3 border-b px-6 py-5 text-sm sm:grid-cols-[110px_1fr]"><strong className="text-slate-500">De</strong><span className="break-all font-semibold text-slate-900">{selectedRecord.sender || "—"}</span><strong className="text-slate-500">Para</strong><span className="break-all text-slate-700">{selectedRecord.recipients?.join(", ") || "—"}</span><strong className="text-slate-500">Fecha</strong><span className="text-slate-700">{displayDate(effectiveDate(selectedRecord))}</span></div><div className="overflow-y-auto p-6"><div className="mx-auto max-w-4xl whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-white p-6 text-[15px] leading-7 text-slate-800">{selectedRecord.body_text || "Este mensaje no contiene texto visible."}</div></div><footer className="flex items-center justify-between border-t bg-slate-50 px-6 py-4"><span className="inline-flex items-center gap-2 text-xs font-bold text-emerald-800"><ShieldCheck size={15} /> Evidencia con fecha del servidor</span><button onClick={() => setSelectedRecord(null)} className="rounded-xl bg-slate-950 px-5 py-2.5 font-bold text-white">Cerrar</button></footer></article></div>}
+      {selectedRecord && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4" role="dialog" aria-modal="true" aria-label="Lectura de correo"><article className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><header className="flex items-start justify-between border-b bg-slate-50 p-6"><div className="min-w-0 pr-4"><p className="text-sm font-bold uppercase tracking-wider text-blue-700">{directionLabels[selectedRecord.direction]} · {displayDate(effectiveDate(selectedRecord))}</p><h2 className="mt-2 text-2xl font-black text-slate-950">{selectedRecord.subject}</h2></div><button onClick={() => setSelectedRecord(null)} className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-200" aria-label="Cerrar lectura"><X /></button></header><div className="grid gap-3 border-b px-6 py-5 text-sm sm:grid-cols-[110px_1fr]"><strong className="text-slate-500">De</strong><span className="break-all font-semibold text-slate-900">{selectedRecord.sender || "—"}</span><strong className="text-slate-500">Para</strong><span className="break-all text-slate-700">{selectedRecord.recipients?.join(", ") || "—"}</span><strong className="text-slate-500">Fecha</strong><span className="text-slate-700">{displayDate(effectiveDate(selectedRecord))}</span></div><div className="overflow-y-auto p-6"><div className="mx-auto max-w-4xl whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-white p-6 text-[15px] leading-7 text-slate-800">{selectedRecord.body_text || "Este mensaje no contiene texto visible."}</div></div><footer className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-6 py-4"><span className="inline-flex items-center gap-2 text-xs font-bold text-emerald-800"><ShieldCheck size={15} /> Evidencia con fecha del servidor</span><div className="flex gap-2"><button onClick={() => setForwardRecord(selectedRecord)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-bold text-white"><Forward size={17} /> Reenviar</button><button onClick={() => setSelectedRecord(null)} className="rounded-xl bg-slate-950 px-5 py-2.5 font-bold text-white">Cerrar</button></div></footer></article></div>}
+      {forwardRecord && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-label="Reenviar correo"><form onSubmit={submitForward} className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl"><header className="flex items-start justify-between border-b p-6"><div><p className="text-sm font-black uppercase tracking-wider text-blue-700">Reenvío seguro</p><h2 className="mt-1 text-2xl font-black">Reenviar correo</h2><p className="mt-1 text-sm text-slate-500">Fwd: {forwardRecord.subject}</p></div><button type="button" onClick={() => setForwardRecord(null)} className="rounded-xl p-2 hover:bg-slate-100" aria-label="Cerrar reenvío"><X /></button></header><div className="space-y-5 p-6"><label className="block font-bold text-slate-700">Destinatario *<input name="to" type="email" required placeholder="destinatario@empresa.com" className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" /></label><label className="block font-bold text-slate-700">Mensaje adicional<textarea name="note" rows={5} placeholder="Escriba una nota antes del mensaje reenviado…" className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" /></label><div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">Se enviará desde <strong>info@jlgcargo.com</strong> y el reenvío quedará registrado con la fecha real del servidor.</div></div><footer className="flex justify-end gap-3 border-t p-6"><button type="button" onClick={() => setForwardRecord(null)} className="rounded-xl border px-5 py-3 font-bold">Cancelar</button><button disabled={forwarding} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-50"><Forward size={17} /> {forwarding ? "Enviando…" : "Enviar reenvío"}</button></footer></form></div>}
       {showForm && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Registrar comunicación manual"><form onSubmit={submitManual} className="max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white shadow-2xl"><header className="flex items-start justify-between border-b p-6"><div><p className="text-sm font-bold uppercase tracking-wider text-blue-700">Evidencia no electrónica</p><h2 className="text-2xl font-black text-slate-950">Registrar comunicación</h2><p className="mt-1 text-sm text-slate-500">La fecha declarada se conserva junto con la fecha real de creación.</p></div><button type="button" onClick={() => setShowForm(false)} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Cerrar"><X /></button></header><div className="grid gap-5 p-6 sm:grid-cols-2">
         <label className="font-bold text-slate-700">Canal<select name="channel" required className="mt-2 w-full rounded-xl border p-3 font-normal"><option value="phone">Llamada</option><option value="whatsapp">WhatsApp</option><option value="in_person">Presencial</option><option value="other">Web directo</option></select></label>
         <label className="font-bold text-slate-700">Dirección<select name="direction" required className="mt-2 w-full rounded-xl border p-3 font-normal"><option value="inbound">Recibida</option><option value="outbound">Enviada</option><option value="internal">Interna</option></select></label>
