@@ -1,9 +1,29 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdmin } from "../../../../../../lib/supabase/admin";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
 const bucketName = "customer-documents";
+
+function createAuthorizedClient(token: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) {
+    throw new Error("Supabase public configuration is incomplete.");
+  }
+
+  return createClient(supabaseUrl, anonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  });
+}
 
 function storagePath(filePath: unknown, fileUrl: unknown) {
   if (typeof filePath === "string" && filePath.trim()) {
@@ -33,7 +53,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Sesión requerida." }, { status: 401 });
     }
 
-    const supabase = createSupabaseAdmin();
+    const supabase = createAuthorizedClient(token);
     const {
       data: { user },
       error: userError,
