@@ -22,16 +22,21 @@ export type BusinessAssociateFormData = {
     hasCertifications: string;
     certifications: string[];
     otherCertification: string;
+    customerCode: string;
     commercialName: string;
+    legalName: string;
     rnc: string;
     economicActivity: string;
     regime: string;
     address: string;
     sector: string;
     city: string;
+    country: string;
+    postalCode: string;
     phone: string;
     fax: string;
     email: string;
+    website: string;
     description: string;
   };
   representative: {
