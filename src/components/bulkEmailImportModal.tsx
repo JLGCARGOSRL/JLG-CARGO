@@ -12,7 +12,7 @@ export default function BulkEmailImportModal({ onClose, onImported }: { onClose:
     try {
       if (!files.length) throw new Error("Seleccione archivos .eml o un archivo .mbox.");
       const result = await importEmailCommunications(await parseEmailFiles(files, String(form.get("mailbox"))));
-      await onImported(`${result.inserted} correo(s) importado(s). ${result.duplicates} duplicado(s) omitido(s).`); onClose();
+      await onImported(`${result.inserted} correo(s) importado(s), ${result.updated} actualizado(s) y ${result.duplicates} duplicado(s) omitido(s).`); onClose();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudieron importar los correos."); }
     finally { setBusy(false); }
   }
