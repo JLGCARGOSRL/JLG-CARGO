@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AlertTriangle, FileText, Trash2, X } from "lucide-react";
 import { supabase } from "../../../lib/supabase/client";
 
 type Customer = {
@@ -61,6 +62,14 @@ type CustomerDocument = {
   file_size: number | null;
   created_at: string | null;
 };
+
+function getDocumentUrl(document: CustomerDocument) {
+  if (document.file_url?.startsWith("http")) return document.file_url;
+  const path = document.file_path || document.file_url;
+  return path
+    ? `https://rgavbykdeizykqrvujjh.supabase.co/storage/v1/object/public/customer-documents/${path}`
+    : null;
+}
 
 function getCompliancePercent(customer: Customer) {
   const checks = [
@@ -152,6 +161,60 @@ export default function CustomerDetailPage() {
   const [documents, setDocuments] = useState<CustomerDocument[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [documentToDelete, setDocumentToDelete] =
+    useState<CustomerDocument | null>(null);
+  const [deletingDocument, setDeletingDocument] = useState(false);
+  const [documentMessage, setDocumentMessage] = useState("");
+  const [documentError, setDocumentError] = useState("");
+
+  async function deleteDocument() {
+    if (!documentToDelete || deletingDocument) return;
+
+    setDeletingDocument(true);
+    setDocumentError("");
+    setDocumentMessage("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error("La sesión ha expirado. Inicia sesión nuevamente.");
+
+      const response = await fetch(
+        `/api/customers/${id}/documents/${documentToDelete.id}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }
+      );
+      const result = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(result?.error || "No se pudo eliminar el documento.");
+      }
+
+      setDocuments((current) =>
+        current.filter((document) => document.id !== documentToDelete.id)
+      );
+      setDocumentMessage(
+        `El documento “${
+          documentToDelete.document_name ||
+          documentToDelete.file_name ||
+          "Documento"
+        }” fue eliminado del expediente.`
+      );
+      setDocumentToDelete(null);
+    } catch (deleteError) {
+      setDocumentError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "No se pudo eliminar el documento."
+      );
+    } finally {
+      setDeletingDocument(false);
+    }
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -512,9 +575,27 @@ export default function CustomerDetailPage() {
           </Link>
         </div>
 
+        {documentMessage && (
+          <div
+            role="status"
+            className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
+          >
+            {documentMessage}
+          </div>
+        )}
+
+        {documentError && !documentToDelete && (
+          <div
+            role="alert"
+            className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+          >
+            {documentError}
+          </div>
+        )}
+
         {docs.length > 0 ? (
-          <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
-            <table className="w-full text-sm">
+          <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-5 py-4">Documento</th>
@@ -541,22 +622,34 @@ export default function CustomerDetailPage() {
                         : "—"}
                     </td>
 
-            <td className="px-5 py-4">
-  {doc.file_path || doc.file_url ? (
-    <a
-      href={`https://rgavbykdeizykqrvujjh.supabase.co/storage/v1/object/public/customer-documents/${doc.file_path || doc.file_url}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="font-semibold text-blue-600 hover:underline"
-    >
-      Ver PDF
-    </a>
-  ) : (
-    <span className="text-slate-500">
-      Sin archivo
-    </span>
-  )}
-</td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        {getDocumentUrl(doc) ? (
+                          <a
+                            href={getDocumentUrl(doc) || undefined}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 font-semibold text-blue-600 hover:underline"
+                          >
+                            <FileText size={16} /> Ver PDF
+                          </a>
+                        ) : (
+                          <span className="text-slate-500">Sin archivo</span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDocumentMessage("");
+                            setDocumentError("");
+                            setDocumentToDelete(doc);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-semibold text-red-700 transition hover:bg-red-50"
+                        >
+                          <Trash2 size={16} /> Eliminar
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -574,6 +667,109 @@ export default function CustomerDetailPage() {
           </div>
         )}
       </div>
+
+      {documentToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deletingDocument) {
+              setDocumentToDelete(null);
+              setDocumentError("");
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-document-title"
+            className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl"
+          >
+            <header className="flex items-start justify-between border-b border-slate-200 p-6">
+              <div className="flex items-start gap-4">
+                <div className="rounded-2xl bg-red-50 p-3 text-red-700">
+                  <AlertTriangle size={25} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wider text-red-700">
+                    Acción permanente
+                  </p>
+                  <h2
+                    id="delete-document-title"
+                    className="mt-1 text-2xl font-black text-slate-950"
+                  >
+                    Eliminar documento
+                  </h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={deletingDocument}
+                onClick={() => {
+                  setDocumentToDelete(null);
+                  setDocumentError("");
+                }}
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40"
+                aria-label="Cerrar confirmación"
+              >
+                <X size={21} />
+              </button>
+            </header>
+
+            <div className="space-y-4 p-6">
+              <p className="text-slate-700">
+                Vas a borrar del perfil de <strong>{c.company_name}</strong> el
+                documento:
+              </p>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="font-bold text-slate-950">
+                  {documentToDelete.document_name ||
+                    documentToDelete.file_name ||
+                    "Documento"}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {documentToDelete.document_type || "Otro"}
+                </p>
+              </div>
+              <p className="text-sm leading-6 text-slate-600">
+                El PDF y su registro se eliminarán del sistema. Esta acción no
+                se puede deshacer.
+              </p>
+              {documentError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+                >
+                  {documentError}
+                </div>
+              )}
+            </div>
+
+            <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50 p-6 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={deletingDocument}
+                onClick={() => {
+                  setDocumentToDelete(null);
+                  setDocumentError("");
+                }}
+                className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+              >
+                Conservar documento
+              </button>
+              <button
+                type="button"
+                disabled={deletingDocument}
+                onClick={() => void deleteDocument()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-bold text-white hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
+              >
+                <Trash2 size={18} />
+                {deletingDocument ? "Eliminando…" : "Eliminar definitivamente"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
