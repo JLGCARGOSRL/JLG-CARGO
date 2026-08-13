@@ -75,6 +75,14 @@ test('communications show the exact database total beyond the 500-row table limi
   assert.match(page, /totalRecords/)
 })
 
+test('imported emails can be opened and read in full', async () => {
+  const page = await read('src/app/communications/page.tsx')
+  assert.match(page, /selectedRecord/)
+  assert.match(page, /Leer correo/)
+  assert.match(page, /Lectura de correo/)
+  assert.match(page, /whitespace-pre-wrap/)
+})
+
 test('password recovery only accepts a real recovery callback and explains failures', async () => {
   const [client, page] = await Promise.all([
     read('src/lib/supabase/client.ts'),
