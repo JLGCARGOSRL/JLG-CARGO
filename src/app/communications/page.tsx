@@ -34,6 +34,7 @@ function localDateTimeValue() {
 export default function CommunicationsPage() {
   const { profile } = useAuth();
   const [records, setRecords] = useState<CommunicationRecord[]>([]);
+  const [totalRecords, setTotalRecords] = useState(0);
   const [configured, setConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -52,6 +53,7 @@ export default function CommunicationsPage() {
     try {
       const result = await getCommunicationRecords();
       setRecords(result.records);
+      setTotalRecords(result.total);
       setConfigured(result.configured);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudieron cargar las comunicaciones.");
@@ -111,9 +113,9 @@ export default function CommunicationsPage() {
       {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{error}</div>}
 
       <section className="grid gap-4 sm:grid-cols-3">
-        <article className="rounded-2xl border bg-white p-5 shadow-sm"><Mail className="text-blue-600" /><p className="mt-3 text-3xl font-black">{records.filter((item) => item.channel === "email").length}</p><p className="text-sm text-slate-500">Correos conservados</p></article>
+        <article className="rounded-2xl border bg-white p-5 shadow-sm"><Mail className="text-blue-600" /><p className="mt-3 text-3xl font-black">{totalRecords}</p><p className="text-sm text-slate-500">Correos conservados</p></article>
         <article className="rounded-2xl border bg-white p-5 shadow-sm"><MessageCircle className="text-emerald-600" /><p className="mt-3 text-3xl font-black">{records.filter((item) => item.source === "manual").length}</p><p className="text-sm text-slate-500">Registros manuales</p></article>
-        <article className="rounded-2xl border bg-white p-5 shadow-sm"><ShieldCheck className="text-violet-600" /><p className="mt-3 text-3xl font-black">{records.length}</p><p className="text-sm text-slate-500">Evidencias auditadas</p></article>
+        <article className="rounded-2xl border bg-white p-5 shadow-sm"><ShieldCheck className="text-violet-600" /><p className="mt-3 text-3xl font-black">{totalRecords}</p><p className="text-sm text-slate-500">Evidencias auditadas</p></article>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
