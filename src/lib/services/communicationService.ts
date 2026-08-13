@@ -7,18 +7,18 @@ function missingModule(error: { code?: string; message?: string }) {
 }
 
 export async function getCommunicationRecords() {
-  const { data, error } = await supabase
-    .from("communication_records_with_user")
-    .select("*")
-    .order("effective_at", { ascending: false })
-    .limit(500);
+  const [{ data, error }, { count, error: countError }] = await Promise.all([
+    supabase.from("communication_records_with_user").select("*").order("effective_at", { ascending: false }).limit(500),
+    supabase.from("communication_records").select("id", { count: "exact", head: true }),
+  ]);
 
   if (error) {
-    if (missingModule(error)) return { records: [] as CommunicationRecord[], configured: false };
+    if (missingModule(error)) return { records: [] as CommunicationRecord[], total: 0, configured: false };
     throw new Error(error.message);
   }
+  if (countError) throw new Error(countError.message);
 
-  return { records: (data ?? []) as CommunicationRecord[], configured: true };
+  return { records: (data ?? []) as CommunicationRecord[], total: count ?? data?.length ?? 0, configured: true };
 }
 
 export async function recordManualCommunication(input: ManualCommunicationInput) {
