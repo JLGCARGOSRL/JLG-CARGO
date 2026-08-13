@@ -21,7 +21,8 @@ test('communications preserve server dates and audit manual evidence', async () 
     read('supabase/migrations/202608120016_communications_and_evidence.sql'),
   ])
   assert.match(page, /Fecha del servidor/)
-  assert.match(page, /Fecha declarada/)
+  assert.match(page, />Fecha \*</)
+  assert.doesNotMatch(page, /Fecha declarada/)
   assert.match(page, /fecha real de creación/i)
   assert.match(page, /type="date"/)
   assert.match(service, /record_manual_communication/)
@@ -29,6 +30,27 @@ test('communications preserve server dates and audit manual evidence', async () 
   assert.match(migration, /Communication evidence cannot be deleted/)
   assert.match(migration, /communication_audit_logs/)
   assert.match(migration, /p_declared_at > now\(\)/)
+})
+
+test('direct web communications use a clear channel label', async () => {
+  const source = await read('src/app/communications/page.tsx')
+  assert.match(source, /other: ["']Web directo["']/)
+  assert.match(source, /<option value="other">Web directo<\/option>/)
+})
+
+test('communications can be securely forwarded and audited', async () => {
+  const [page, route, smtp] = await Promise.all([
+    read('src/app/communications/page.tsx'),
+    read('src/app/api/communications/[id]/forward/route.ts'),
+    read('src/lib/email/smtp.ts'),
+  ])
+  assert.match(page, /> Reenviar</)
+  assert.match(page, /\/api\/communications\/\$\{forwardRecord\.id\}\/forward/)
+  assert.match(route, /SMTP_PASSWORD/)
+  assert.match(route, /communication_records/)
+  assert.match(route, /sent_at: now/)
+  assert.match(smtp, /AUTH LOGIN/)
+  assert.match(smtp, /Message-ID/)
 })
 
 test('manual communication records allow multiple entries without message ids', async () => {
@@ -148,6 +170,22 @@ test('the production migration revokes anonymous access and protects finance', a
   assert.match(source, /customer_documents add column if not exists notes/i)
 })
 
+test('customer profile deletes documents with confirmation and storage cleanup', async () => {
+  const [page, route] = await Promise.all([
+    read('src/app/customers/[id]/page.tsx'),
+    read('src/app/api/customers/[id]/documents/[documentId]/route.ts'),
+  ])
+  assert.match(page, /Eliminar documento/)
+  assert.match(page, /Eliminar definitivamente/)
+  assert.match(page, /Esta acción no\s+se puede deshacer/)
+  assert.doesNotMatch(page, /window\.confirm/)
+  assert.match(route, /auth\.getUser\(token\)/)
+  assert.match(route, /system_user_profiles/)
+  assert.match(route, /\.from\(bucketName\)\s*\.remove\(\[path\]\)/)
+  assert.match(route, /\.from\("customer_documents"\)\s*\.delete\(\)/)
+  assert.match(route, /\.eq\("customer_id", id\)/)
+})
+
 test('billing supports selecting and printing multiple invoices together', async () => {
   const source = await read('src/app/warehouse/billing/page.tsx')
   assert.match(source, /selectedIds/)
@@ -232,6 +270,16 @@ test('authenticated users can keep the public associate form open', async () => 
   assert.match(source, /const isLogin = pathname === LOGIN_ROUTE/)
   assert.match(source, /if \(user && isLogin\) router\.replace/)
   assert.doesNotMatch(source, /if \(user && isPublic\) router\.replace/)
+})
+
+test('the public associate form never exposes customer prefill', async () => {
+  const [form, applications] = await Promise.all([
+    read('src/app/registro-asociado/page.tsx'),
+    read('src/app/customers/applications/page.tsx'),
+  ])
+  assert.match(form, /new URLSearchParams\(window\.location\.search\)/)
+  assert.match(form, /!authLoading && user && internalPrefillEnabled/)
+  assert.match(applications, /registro-asociado\?modo=interno/)
 })
 
 test('login provides a complete password recovery flow', async () => {
