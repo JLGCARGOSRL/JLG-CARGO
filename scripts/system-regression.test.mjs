@@ -105,6 +105,19 @@ test('imported emails can be opened and read in full', async () => {
   assert.match(page, /whitespace-pre-wrap/)
 })
 
+test('an opened communication survives a page refresh until explicitly closed', async () => {
+  const [page, client] = await Promise.all([
+    read('src/app/communications/page.tsx'),
+    read('src/lib/supabase/client.ts'),
+  ])
+  assert.match(page, /window\.sessionStorage\.setItem\(openCommunicationStorageKey, record\.id\)/)
+  assert.match(page, /window\.sessionStorage\.getItem\(openCommunicationStorageKey\)/)
+  assert.match(page, /window\.sessionStorage\.removeItem\(openCommunicationStorageKey\)/)
+  assert.match(page, /onClick=\{closeRecord\}/)
+  assert.match(client, /autoRefreshToken: true/)
+  assert.match(client, /persistSession: true/)
+})
+
 test('password recovery only accepts a real recovery callback and explains failures', async () => {
   const [client, page] = await Promise.all([
     read('src/lib/supabase/client.ts'),
