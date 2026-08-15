@@ -285,6 +285,17 @@ test('authenticated users can keep the public associate form open', async () => 
   assert.doesNotMatch(source, /if \(user && isPublic\) router\.replace/)
 })
 
+test('dashboard makes the public registration link easy to share', async () => {
+  const dashboard = await read('src/app/dashboard/page.tsx')
+  assert.match(dashboard, /Enviar enlace de inscripción/)
+  assert.match(dashboard, /navigator\.clipboard\.writeText\(registrationUrl\(\)\)/)
+  assert.match(dashboard, /https:\/\/wa\.me\/\?text=/)
+  assert.match(dashboard, /mailto:\?subject=/)
+  assert.match(dashboard, /href=\{registrationPath\}/)
+  assert.match(dashboard, /const registrationPath = "\/registro-asociado"/)
+  assert.doesNotMatch(dashboard, /registrationPath = "\/registro-asociado\?modo=interno"/)
+})
+
 test('the public associate form never exposes customer prefill', async () => {
   const [form, applications] = await Promise.all([
     read('src/app/registro-asociado/page.tsx'),
