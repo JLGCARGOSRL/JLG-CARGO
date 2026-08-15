@@ -2,27 +2,68 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, Boxes, CircleDollarSign, ClipboardCheck, Container, FileText, MapPin, PackageCheck, Scale, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, Boxes, CircleDollarSign, ClipboardCheck, Container, Copy, ExternalLink, FileText, Mail, MapPin, MessageCircle, PackageCheck, Scale, ShieldCheck, UserPlus } from "lucide-react";
 import { getWarehouseDashboard, type WarehouseDashboardData } from "../../lib/services/warehouseOperationsService";
 
 const initial: WarehouseDashboardData = { manifests: 0, receipts: 0, pendingInspection: 0, available: 0, customsPending: 0, dispatched: 0, withoutLocation: 0, piecesInStock: 0, weightInStock: 0, locations: 0, recentReceipts: [] };
 const format = (value: number, decimals = 0) => value.toLocaleString("es-DO", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 const customerName = (row: WarehouseDashboardData["recentReceipts"][number]) => row.customers?.company_name || row.customers?.legal_name || "Cliente sin nombre";
+const registrationPath = "/registro-asociado";
+const registrationMessage = "Complete su inscripción como asociado de JLG Cargo mediante este enlace:";
 
 export default function DashboardPage() {
   const [data, setData] = useState(initial);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [linkNotice, setLinkNotice] = useState("");
 
   useEffect(() => { getWarehouseDashboard().then(setData).catch((err) => setError(err instanceof Error ? err.message : "No fue posible cargar el panel.")).finally(() => setLoading(false)); }, []);
+
+  function registrationUrl() {
+    return `${window.location.origin}${registrationPath}`;
+  }
+
+  async function copyRegistrationLink() {
+    try {
+      await navigator.clipboard.writeText(registrationUrl());
+      setLinkNotice("Enlace de inscripción copiado. Ya puede pegarlo en cualquier conversación.");
+    } catch {
+      setLinkNotice("No se pudo copiar automáticamente. Abra el formulario y copie la dirección del navegador.");
+    }
+  }
+
+  function sendRegistrationLink(channel: "whatsapp" | "email") {
+    const url = registrationUrl();
+    const body = `${registrationMessage} ${url}`;
+    const destination = channel === "whatsapp"
+      ? `https://wa.me/?text=${encodeURIComponent(body)}`
+      : `mailto:?subject=${encodeURIComponent("Inscripción como asociado de JLG Cargo")}&body=${encodeURIComponent(body)}`;
+    window.open(destination, "_blank", "noopener,noreferrer");
+  }
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-7">
       <section className="overflow-hidden rounded-3xl bg-slate-950 px-6 py-7 text-white shadow-xl sm:px-8">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div><div className="mb-3 inline-flex rounded-full bg-blue-500/15 px-3 py-1 text-xs font-bold uppercase tracking-wider text-blue-300">Centro de control operativo</div><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Operación logística en tiempo real</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Flujo controlado desde el manifiesto hasta la facturación y despacho, incluyendo recepción, inspección, almacenaje y verificación de Aduanas.</p></div>
-          <div className="flex flex-wrap gap-2"><Quick href="/warehouse/manifests/new" label="Nuevo manifiesto" /><Quick href="/warehouse/receipts/check-in" label="Dar entrada" primary /><Quick href="/warehouse/customs-verification" label="Verificar Aduanas" /></div>
+          <div className="flex flex-wrap gap-2"><Quick href="#enlace-inscripcion" label="Enviar inscripción" primary /><Quick href="/warehouse/manifests/new" label="Nuevo manifiesto" /><Quick href="/warehouse/receipts/check-in" label="Dar entrada" /><Quick href="/warehouse/customs-verification" label="Verificar Aduanas" /></div>
         </div>
+      </section>
+
+      <section id="enlace-inscripcion" className="overflow-hidden rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-700 to-cyan-600 p-6 text-white shadow-lg sm:p-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex max-w-2xl gap-4">
+            <div className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15 sm:flex"><UserPlus size={29} /></div>
+            <div><p className="text-xs font-black uppercase tracking-[.16em] text-blue-100">Acceso rápido para clientes</p><h2 className="mt-1 text-2xl font-black">Enviar enlace de inscripción</h2><p className="mt-2 text-sm leading-6 text-blue-50">Comparta el formulario público con un cliente o suplidor. El enlace permite completar la inscripción y adjuntar los documentos requeridos.</p></div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[520px]">
+            <button type="button" onClick={() => void copyRegistrationLink()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-blue-800 shadow-sm hover:bg-blue-50"><Copy size={18} /> Copiar enlace</button>
+            <button type="button" onClick={() => sendRegistrationLink("whatsapp")} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-white hover:bg-emerald-400"><MessageCircle size={18} /> Enviar por WhatsApp</button>
+            <button type="button" onClick={() => sendRegistrationLink("email")} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-black text-white hover:bg-white/20"><Mail size={18} /> Enviar por correo</button>
+            <Link href={registrationPath} target="_blank" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-black text-white hover:bg-white/20"><ExternalLink size={18} /> Abrir formulario</Link>
+          </div>
+        </div>
+        {linkNotice && <div role="status" className="mt-4 rounded-xl border border-white/25 bg-slate-950/20 px-4 py-3 text-sm font-semibold text-white">{linkNotice}</div>}
       </section>
 
       {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
