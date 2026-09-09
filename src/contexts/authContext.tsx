@@ -1,6 +1,6 @@
 "use client";
 
-import type { User } from "@supabase/supabase-js";
+import type { AuthError, User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase/client";
@@ -16,6 +16,25 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+function getSignInErrorMessage(error: AuthError) {
+  if (
+    error.name === "AuthRetryableFetchError" ||
+    error.status === 0 ||
+    (typeof error.status === "number" && error.status >= 500)
+  ) {
+    return "El servicio de acceso no está disponible en este momento. Inténtelo nuevamente en unos minutos.";
+  }
+
+  if (
+    error.code === "invalid_credentials" ||
+    error.message.toLowerCase().includes("invalid login credentials")
+  ) {
+    return "Correo o contraseña incorrectos.";
+  }
+
+  return "No fue posible validar sus credenciales. Inténtelo nuevamente.";
+}
 
 async function loadProfile(userId: string) {
   const { data, error } = await supabase
@@ -71,7 +90,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: email.trim().toLowerCase(),
       password,
     });
-    if (error || !data.user) return "Correo o contraseña incorrectos.";
+    if (error) return getSignInErrorMessage(error);
+    if (!data.user) return "No fue posible validar sus credenciales. Inténtelo nuevamente.";
 
     try {
       const nextProfile = await loadProfile(data.user.id);

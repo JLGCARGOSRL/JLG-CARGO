@@ -133,6 +133,14 @@ test('password recovery only accepts a real recovery callback and explains failu
   assert.match(page, /session_not_found/)
 })
 
+test('sign in distinguishes an unavailable auth service from invalid credentials', async () => {
+  const source = await read('src/contexts/authContext.tsx')
+  assert.match(source, /AuthRetryableFetchError/)
+  assert.match(source, /invalid_credentials/)
+  assert.match(source, /El servicio de acceso no está disponible/)
+  assert.match(source, /Correo o contraseña incorrectos/)
+})
+
 test('production keeps using the original warehouse Supabase project during migration', async () => {
   const config = await read('next.config.ts')
   assert.match(config, /LEGACY_NEXT_PUBLIC_SUPABASE_URL/)
