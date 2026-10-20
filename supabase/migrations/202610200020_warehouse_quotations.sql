@@ -7,7 +7,7 @@ create table public.warehouse_quotations (
   operation text not null check (operation in ('cross_docking','deconsolidation','export')),
   presentation text not null check (presentation in ('palletized','loose','mixed')),
   currency text not null check (currency in ('USD','DOP')),
-  valid_until text not null default '' check (valid_until = '' or valid_until ~ '^\d{4}-\d{2}-\d{2}$'),
+  valid_until text not null default '' check (valid_until = '' or valid_until ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
   shipment jsonb not null check (jsonb_typeof(shipment) = 'object'),
   cargo jsonb not null check (jsonb_typeof(cargo) = 'array'),
   charges jsonb not null check (jsonb_typeof(charges) = 'array' and jsonb_array_length(charges) > 0),
