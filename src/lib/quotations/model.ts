@@ -44,8 +44,11 @@ export function provisionalStructure(operation: Operation, presentation: Present
   // or export rate. Keep the specialized services explicitly unpriced.
   return operation === 'deconsolidation' ? references : [...structure(operation, presentation), ...references];
 }
+export function cleanQuotationConditions(value: string): string {
+  return value.replace('Tarifas provisionales basadas en la factura MARDOM FAC547460 del 29/05/2026, en DOP. Cantidades e importes sujetos al alcance de esta operación. El almacenaje no establece días libres ni una tarifa por M³/día. Servicios no detallados se cotizan por separado.', '').trim();
+}
 export function newDraft(): QuoteDraft {
-  return { customer_id: '', operation: 'deconsolidation', presentation: 'loose', currency: 'DOP', valid_until: '', shipment: { container: '', size: '40HC', master_bl: '', manifest: '', port: '', dispatches: 1 }, cargo: [newCargo()], charges: provisionalStructure('deconsolidation', 'loose'), conditions: 'Tarifas provisionales basadas en la factura MARDOM FAC547460 del 29/05/2026, en DOP. Cantidades e importes sujetos al alcance de esta operación. El almacenaje no establece días libres ni una tarifa por M³/día. Servicios no detallados se cotizan por separado.' };
+  return { customer_id: '', operation: 'deconsolidation', presentation: 'loose', currency: 'DOP', valid_until: '', shipment: { container: '', size: '40HC', master_bl: '', manifest: '', port: '', dispatches: 1 }, cargo: [newCargo()], charges: provisionalStructure('deconsolidation', 'loose'), conditions: '' };
 }
 export function cargoTotals(cargo: Cargo[]) {
   return cargo.reduce((sum, item) => ({ boxes: sum.boxes + item.boxes, kg: sum.kg + item.kg, m3: sum.m3 + item.m3, pallets: sum.pallets + item.pallets }), { boxes: 0, kg: 0, m3: 0, pallets: 0 });
