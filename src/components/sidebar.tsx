@@ -15,6 +15,7 @@ import { useAuth } from "../contexts/authContext";
 const mainMenu = [
   { name: "Panel ejecutivo", href: "/dashboard", icon: LayoutDashboard },
   { name: "Clientes", href: "/customers", icon: Users },
+  { name: "Cotizaciones", href: "/quotations", icon: CircleDollarSign },
   { name: "Solicitudes de asociados", href: "/customers/applications", icon: ClipboardList },
   { name: "Correo y comunicaciones", href: "/communications", icon: Mail },
 ];
