@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import QuotationServices from '../../components/quotationServices';
 import { useEffect, useState, type ReactNode } from 'react';
-import { BASES, OPERATIONS, PRESENTATIONS, cargoTotals, money, newCargo, newCharge, newDraft, quantity, provisionalStructure, totals, validate, type Charge, type Company, type Quote, type QuoteDraft } from '../../lib/quotations/model';
+import { BASES, OPERATIONS, PRESENTATIONS, cargoTotals, money, newCargo, newDraft, quantity, provisionalStructure, totals, validate, type Company, type Quote, type QuoteDraft } from '../../lib/quotations/model';
 import { getQuotationCompanies, getQuotations, saveQuotation } from '../../lib/services/quotationService';
 
 const input = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
@@ -48,7 +49,6 @@ export default function QuotationsPage() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
   function change(values: Partial<QuoteDraft>) { setDraft(d => ({ ...d, ...values })); setDirty(true); setNotice(''); }
-  function charge(id: string, values: Partial<Charge>) { change({ charges: draft.charges.map(c => c.id === id ? { ...c, ...values } : c) }); }
   function reset() { setExisting(undefined); setDraft(newDraft()); setDirty(false); setNotice(''); setPreview(false); }
   function open(q: Quote) { setDraft(q); setExisting(q); setDirty(false); setPreview(false); setNotice(''); setError(''); }
   const company = companies.find(c => c.id === draft.customer_id);
@@ -111,26 +111,12 @@ export default function QuotationsPage() {
         <button className={button} onClick={() => change({ cargo: [...draft.cargo, newCargo()] })}>+ Agregar HBL / carga</button>
         <p className="font-semibold text-slate-700">Totales: {cargo.boxes} cajas/bultos · {cargo.pallets} paletas · {cargo.kg.toFixed(3)} kg · {cargo.m3.toFixed(3)} M³</p>
       </Panel>
-      <Panel title="4. Estructura de costos y precios">
-        <p className="text-sm text-slate-500">Precios provisionales de la factura MARDOM FAC547460 (29/05/2026), en DOP, editables. Costos propios de JLG pendientes. Una casilla vacía significa pendiente; cero significa incluido o sin cargo.</p>
-        {draft.charges.map(line => <div key={line.id} className="space-y-3 rounded-xl border p-4">{line.reference && <p className="text-xs font-semibold text-amber-800">Referencia provisional {line.reference.supplier} · {line.reference.document} · Unidad original: {line.reference.unit} · {line.reference.price.toFixed(2)} DOP{line.price !== line.reference.price || draft.currency !== "DOP" ? " · Importe modificado" : ""}</p>}<div className="grid gap-3 md:grid-cols-[2fr_1fr_auto]"><Field label="Concepto"><input className={input} value={line.name} onChange={e => charge(line.id, { name: e.target.value })} /></Field><Field label="Base de cálculo"><select className={input} value={line.basis} onChange={e => charge(line.id, { basis: e.target.value as Charge['basis'] })}>{Object.entries(BASES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field><button className={`${button} self-end`} onClick={() => change({ charges: draft.charges.filter(c => c.id !== line.id) })}>Quitar</button></div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            {line.basis === 'manual' && <Numeric label="Cantidad manual" value={line.quantity} onChange={v => charge(line.id, { quantity: v ?? 0 })} />}
-            <Numeric label="Unidades incluidas" value={line.included} onChange={v => charge(line.id, { included: v ?? 0 })} />
-            <Numeric label="Cantidad mínima facturable" value={line.minimum} onChange={v => charge(line.id, { minimum: v ?? 0 })} />
-            <Numeric label={`Costo unitario ${draft.currency}`} nullable value={line.cost} onChange={v => charge(line.id, { cost: v })} />
-            <Numeric label={`Venta unitaria ${draft.currency}`} nullable value={line.price} onChange={v => charge(line.id, { price: v })} />
-            <Numeric label="Impuesto %" value={line.tax} onChange={v => charge(line.id, { tax: v ?? 0 })} />
-            <p className="self-end py-2 text-sm font-semibold">Cantidad: {quantity(line, draft).toFixed(3)}<br />Venta: {line.price === null ? 'Pendiente' : format(money(quantity(line, draft) * line.price))}</p>
-          </div><Field label="Alcance / inclusiones de este cargo"><input className={input} value={line.notes} onChange={e => charge(line.id, { notes: e.target.value })} /></Field>
-        </div>)}
-        <div className="flex flex-wrap gap-2"><button className={button} onClick={() => change({ charges: [...draft.charges, newCharge()] })}>+ Servicio adicional</button>{['Almacenaje', 'Paletización y materiales', 'Transporte', 'Retorno de contenedor', 'Pesaje / VGM', 'Horas extras'].map(name => <button key={name} className={button} onClick={() => change({ charges: [...draft.charges, newCharge(name, 'manual')] })}>+ {name}</button>)}</div>
-        <p className="text-sm text-amber-800">MARDOM facturó una unidad de cada concepto. No se multiplican automáticamente por HBL, M³ o días. Cross-docking y exportación conservan sus servicios específicos pendientes de valorar. La presentación no genera recargos inventados.</p><p className="text-sm text-slate-500">Almacenaje y horas extras usan cantidad manual: documenta días libres, unidad, personas y horas en el alcance. Impuestos se configuran por concepto.</p>
-        <Field label="Condiciones, servicios incluidos y exclusiones"><textarea className={input} rows={4} value={draft.conditions} onChange={e => change({ conditions: e.target.value })} /></Field>
+      <Panel title="4. Servicios a cotizar">
+        <QuotationServices draft={draft} onChange={change} />
       </Panel>
       <Panel title="5. Resumen del contenedor">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[['Costo interno', summary.pendingCost ? 'Pendiente' : format(summary.cost)], ['Subtotal de venta', summary.pendingPrice ? 'Pendiente' : format(summary.subtotal)], ['Impuestos', summary.pendingPrice ? 'Pendiente' : format(summary.tax)], ['Total de cotización', summary.pendingPrice ? 'Pendiente' : format(summary.total)]].map(([label, value]) => <div className="rounded-xl bg-slate-50 p-4" key={label}><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-xl font-bold">{value}</p></div>)}</div>
-        <p className="text-sm text-slate-600">Margen sobre venta antes de impuestos: {summary.pendingCost || summary.pendingPrice || !summary.subtotal ? 'Pendiente' : `${summary.margin.toFixed(2)}%`}</p>
+        <div className="grid gap-4 sm:grid-cols-3">{[['Subtotal de venta', summary.pendingPrice ? 'Pendiente' : format(summary.subtotal)], ['Impuestos', summary.pendingPrice ? 'Pendiente' : format(summary.tax)], ['Total de cotización', summary.pendingPrice ? 'Pendiente' : format(summary.total)]].map(([label, value]) => <div className="rounded-xl bg-slate-50 p-4" key={label}><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-xl font-bold">{value}</p></div>)}</div>
+        <details className="text-sm text-slate-500"><summary className="cursor-pointer">Ver costo y margen interno</summary><p className="mt-2">Costo: {summary.pendingCost ? 'Pendiente' : format(summary.cost)} · Margen antes de impuestos: {summary.pendingCost || summary.pendingPrice || !summary.subtotal ? 'Pendiente' : `${summary.margin.toFixed(2)}%`}</p></details>
         <div className="flex flex-wrap gap-3"><button className="rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={saving || !company} onClick={() => void save()}>{saving ? 'Guardando…' : 'Guardar borrador'}</button><button className={button} onClick={showPreview}>Vista comercial</button>{dirty && <><span className="self-center text-sm text-amber-800">Cambios sin guardar</span><button className={button} onClick={() => { if (window.confirm("¿Descartar los cambios sin guardar?")) { if (existing) open(existing); else reset(); } }}>Descartar cambios</button></>}</div>
       </Panel>
       </fieldset></fieldset>
