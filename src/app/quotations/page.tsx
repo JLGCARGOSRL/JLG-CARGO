@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import QuotationServices from '../../components/quotationServices';
 import { useEffect, useState, type ReactNode } from 'react';
-import { BASES, OPERATIONS, PRESENTATIONS, cargoTotals, money, newCargo, newDraft, quantity, provisionalStructure, totals, validate, type Company, type Quote, type QuoteDraft } from '../../lib/quotations/model';
+import { BASES, OPERATIONS, PRESENTATIONS, cargoTotals, money, newCargo, newDraft, quantity, tariffStructure, totals, validate, type Company, type Quote, type QuoteDraft } from '../../lib/quotations/model';
 import { getQuotationCompanies, getQuotations, saveQuotation } from '../../lib/services/quotationService';
 
 const input = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
@@ -91,10 +91,10 @@ export default function QuotationsPage() {
       </Panel>
       <fieldset disabled={!company} className="space-y-6 disabled:opacity-50">
       <Panel title="2. Operación y contenedor">
-        <p className="text-sm text-amber-800">Cambiar operación o presentación carga una estructura nueva en DOP con referencias provisionales MARDOM y reemplaza los cargos actuales.</p>
+        <p className="text-sm text-amber-800">Cambiar operación o presentación reemplaza los servicios actuales con las tarifas en DOP de la operación seleccionada.</p>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <Field label="Operación"><select className={input} value={draft.operation} onChange={e => { const operation = e.target.value as QuoteDraft['operation']; change({ operation, currency: 'DOP', charges: provisionalStructure(operation, draft.presentation) }); }}>{Object.entries(OPERATIONS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
-          <Field label="Presentación"><select className={input} value={draft.presentation} onChange={e => { const presentation = e.target.value as QuoteDraft['presentation']; change({ presentation, currency: 'DOP', charges: provisionalStructure(draft.operation, presentation) }); }}>{Object.entries(PRESENTATIONS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
+          <Field label="Operación"><select className={input} value={draft.operation} onChange={e => { const operation = e.target.value as QuoteDraft['operation']; change({ operation, currency: 'DOP', charges: tariffStructure(operation, draft.presentation) }); }}>{Object.entries(OPERATIONS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
+          <Field label="Presentación"><select className={input} value={draft.presentation} onChange={e => { const presentation = e.target.value as QuoteDraft['presentation']; change({ presentation, currency: 'DOP', charges: tariffStructure(draft.operation, presentation) }); }}>{Object.entries(PRESENTATIONS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
           <Field label="Tamaño / tipo"><select className={input} value={draft.shipment.size} onChange={e => change({ shipment: { ...draft.shipment, size: e.target.value } })}>{['20', '40', '40HC', '45HC', 'Otro'].map(v => <option key={v}>{v}</option>)}</select></Field>
           {([['container', 'Número de contenedor'], ['master_bl', 'BL madre'], ['manifest', 'Número de manifiesto'], ['port', 'Puerto / ruta']] as const).map(([key, label]) => <Field key={key} label={label}><input className={input} value={draft.shipment[key]} onChange={e => change({ shipment: { ...draft.shipment, [key]: e.target.value } })} /></Field>)}
           <Numeric label="Despachos previstos" integer value={draft.shipment.dispatches} onChange={v => change({ shipment: { ...draft.shipment, dispatches: v ?? 0 } })} />

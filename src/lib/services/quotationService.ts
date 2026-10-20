@@ -1,5 +1,5 @@
 import { supabase } from '../supabase/client';
-import { cleanQuotationConditions, validate, type Company, type Quote, type QuoteDraft } from '../quotations/model';
+import { cleanQuotationCharges, cleanQuotationConditions, validate, type Company, type Quote, type QuoteDraft } from '../quotations/model';
 function failure(error: { code?: string; message: string }) {
   if (['42P01', 'PGRST205'].includes(error.code || '')) return new Error('Cotizaciones requiere aplicar la migración 202610200020 en Supabase.');
   return new Error(error.message);
@@ -16,13 +16,13 @@ export async function getQuotationCompanies(): Promise<Company[]> {
 export async function getQuotations(): Promise<Quote[]> {
   const { data, error } = await supabase.from('warehouse_quotations').select('*').order('created_at', { ascending: false }).limit(100);
   if (error) throw failure(error);
-  return ((data || []) as Quote[]).map(quote => ({ ...quote, conditions: cleanQuotationConditions(quote.conditions) }));
+  return ((data || []) as Quote[]).map(quote => ({ ...quote, charges: cleanQuotationCharges(quote.charges), conditions: cleanQuotationConditions(quote.conditions) }));
 }
 export async function saveQuotation(draft: QuoteDraft, existing?: Quote): Promise<Quote> {
   const problem = validate(draft);
   if (problem) throw new Error(problem);
   // Explicit payload prevents audit fields from being overwritten by a loaded record.
-  const payload: QuoteDraft = { customer_id: draft.customer_id, operation: draft.operation, presentation: draft.presentation, currency: draft.currency, valid_until: draft.valid_until || '', shipment: draft.shipment, cargo: draft.cargo, charges: draft.charges, conditions: cleanQuotationConditions(draft.conditions) };
+  const payload: QuoteDraft = { customer_id: draft.customer_id, operation: draft.operation, presentation: draft.presentation, currency: draft.currency, valid_until: draft.valid_until || '', shipment: draft.shipment, cargo: draft.cargo, charges: cleanQuotationCharges(draft.charges), conditions: cleanQuotationConditions(draft.conditions) };
   const query = existing
     ? supabase.from('warehouse_quotations').update(payload).eq('id', existing.id).eq('updated_at', existing.updated_at)
     : supabase.from('warehouse_quotations').insert(payload);

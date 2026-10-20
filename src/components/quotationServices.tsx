@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from 'react';
 import { SlidersHorizontal, Trash2 } from 'lucide-react';
-import { BASES, money, newCharge, provisionalStructure, quantity, type Charge, type QuoteDraft } from '../lib/quotations/model';
+import { BASES, money, newCharge, tariffStructure, quantity, type Charge, type QuoteDraft } from '../lib/quotations/model';
 
 const input = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
 const extraServices = ['Paletización y materiales', 'Transporte', 'Retorno de contenedor', 'Pesaje / VGM', 'Horas extras'];
@@ -11,7 +11,7 @@ export default function QuotationServices({ draft, onChange }: { draft: QuoteDra
   const [selected, setSelected] = useState('');
   const [customName, setCustomName] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const catalog = [...provisionalStructure(draft.operation, draft.presentation), ...extraServices.map(name => newCharge(name, 'manual'))];
+  const catalog = [...tariffStructure(draft.operation, draft.presentation), ...extraServices.map(name => newCharge(name, 'manual'))];
   const format = (n: number) => new Intl.NumberFormat('es-DO', { style: 'currency', currency: draft.currency }).format(n);
   function update(id: string, values: Partial<Charge>) {
     onChange({ charges: draft.charges.map(line => line.id === id ? { ...line, ...values } : line) });
@@ -20,7 +20,7 @@ export default function QuotationServices({ draft, onChange }: { draft: QuoteDra
     const template = selected === 'custom' ? newCharge(customName.trim(), 'manual') : catalog.find(line => line.name === selected);
     if (!template || !template.name) return;
     const line = { ...template, id: crypto.randomUUID() };
-    if (line.reference && draft.currency !== 'DOP') line.price = null;
+    if (draft.currency !== 'DOP') line.price = null;
     onChange({ charges: [...draft.charges, line] });
     setSelected(''); setCustomName('');
   }
@@ -58,14 +58,13 @@ export default function QuotationServices({ draft, onChange }: { draft: QuoteDra
                 {(['cost', 'tax', 'included', 'minimum'] as const).map(key => <label key={key} className="text-xs font-medium text-slate-600">{{ cost: `Costo interno ${draft.currency}`, tax: 'Impuesto %', included: 'Unidades incluidas', minimum: 'Cantidad mínima' }[key]}<input className={`${input} mt-1`} type="number" min="0" max={key === 'tax' ? 100 : undefined} step="any" placeholder={key === 'cost' ? 'Pendiente' : '0'} value={line[key] ?? ''} onChange={e => update(line.id, { [key]: e.target.value === '' && key === 'cost' ? null : Number(e.target.value) })} /></label>)}
                 <label className="text-xs font-medium text-slate-600 sm:col-span-2">Notas / alcance<input className={`${input} mt-1`} value={line.notes} onChange={e => update(line.id, { notes: e.target.value })} /></label>
               </div>
-              <p className="mt-3 text-xs text-slate-500">Cantidad facturable: {quantity(line, draft)}{line.reference ? ` · Referencia MARDOM ${line.reference.document}: ${line.reference.price.toFixed(2)} DOP por ${line.reference.unit}` : ''}</p>
+              <p className="mt-3 text-xs text-slate-500">Cantidad facturable: {quantity(line, draft)}</p>
             </td></tr>}
           </Fragment>)}
           {!draft.charges.length && <tr><td colSpan={5} className="p-8 text-center text-slate-500">Selecciona un servicio para comenzar.</td></tr>}
         </tbody>
       </table>
     </div>
-    <p className="text-xs text-slate-500">Precios provisionales MARDOM. Usa el botón de ajustes solo si necesitas cambiar impuestos, costos o la forma de cobro.</p>
     <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-medium text-slate-600">Condiciones de la cotización</summary><label className="mt-3 block text-sm text-slate-600">Condiciones, servicios incluidos y exclusiones<textarea className={`${input} mt-1`} rows={3} value={draft.conditions} onChange={e => onChange({ conditions: e.target.value })} /></label></details>
   </div>;
 }

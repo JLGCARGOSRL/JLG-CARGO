@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 const source = await readFile(new URL('../src/lib/quotations/model.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { newDraft, newCharge, newCargo, totals, quantity, structure, provisionalStructure, validate } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+const { newDraft, newCharge, newCargo, totals, quantity, structure, tariffStructure, cleanQuotationCharges, cleanQuotationConditions, validate } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 const line = (name, basis, price, cost = 0) => ({ ...newCharge(name, basis), price, cost });
 test('a whole-container cost is charged once regardless of the HBL count', () => {
   const draft = newDraft();
@@ -70,32 +70,36 @@ test('validation rejects missing company, duplicate HBL, fractional pieces and i
   assert.match(validate(draft), /no negativos/);
 });
 
-test('MARDOM default preserves six prices in DOP and calculates tax without copying invoice rounding', () => {
+test('new DOP quotations apply the approved 5 percent rate reduction with cent rounding', () => {
   const draft = newDraft();
-  assert.equal(draft.operation, 'deconsolidation');
+  assert.deepEqual(draft.charges.map(c => c.price), [945.15, 1414.55, 1697.46, 4243.65, 841.77, 33.90]);
   assert.equal(draft.currency, 'DOP');
-  assert.equal(draft.charges.length, 6);
-  assert.equal(totals(draft).subtotal, 9659.44);
-  assert.equal(totals(draft).tax, 1738.69);
-  assert.equal(totals(draft).total, 11398.13);
+  assert.equal(totals(draft).subtotal, 9176.48);
+  assert.equal(totals(draft).tax, 1651.77);
+  assert.equal(totals(draft).total, 10828.25);
   assert.equal(totals(draft).pendingCost, true);
-  assert.equal(totals(draft).pendingPrice, false);
-  assert.ok(draft.charges.every(c => c.reference.document === 'FAC547460'));
+  assert.equal(draft.conditions, '');
+  assert.ok(draft.charges.every(c => c.notes === '' && !('reference' in c)));
 });
-test('invoice BL and M2 references do not infer HBL, volume or storage-day rates', () => {
+test('manual service quantities do not change with HBL count, volume or dispatch count', () => {
   const draft = newDraft();
   draft.cargo = Array.from({ length: 10 }, (_, i) => ({ ...newCargo(), hbl: `BL-${i}`, m3: 100 }));
   draft.shipment.dispatches = 20;
-  assert.equal(totals(draft).total, 11398.13);
-  const storage = draft.charges.find(c => c.name === 'Almacenaje seco');
-  assert.equal(storage.basis, 'manual');
-  assert.equal(storage.reference.unit, 'M²');
+  assert.equal(totals(draft).subtotal, 9176.48);
 });
-test('export and cross-docking retain unpriced specialized services and separate source rates', () => {
+test('specialized cross-docking and export services keep their own unpriced scope', () => {
   for (const operation of ['export', 'cross_docking']) {
-    const draft = { ...newDraft(), operation, charges: provisionalStructure(operation, 'mixed') };
+    const draft = { ...newDraft(), operation, charges: tariffStructure(operation, 'mixed') };
     assert.equal(totals(draft).pendingPrice, true);
-    assert.equal(draft.charges.filter(c => c.reference?.supplier === 'MARDOM').length, 6);
-    assert.ok(draft.charges.some(c => c.price === null && !c.reference));
+    assert.equal(draft.charges.filter(c => c.price !== null).length, 6);
   }
+});
+test('legacy supplier notes are removed without repricing saved quotations or erasing other conditions', () => {
+  const original = { ...line('Manejo logístico', 'manual', 886.07), notes: 'Tarifa provisional MARDOM: 886.07 DOP por Unidad.', reference: { supplier: 'MARDOM', document: 'FAC547460' } };
+  const [clean] = cleanQuotationCharges([original]);
+  assert.equal(clean.price, 886.07);
+  assert.equal(clean.notes, '');
+  assert.ok(!('reference' in clean));
+  assert.ok('reference' in original);
+  assert.equal(cleanQuotationConditions('Pago al contado.\nTarifas MARDOM FAC547460.\nEntrega coordinada.'), 'Pago al contado.\nEntrega coordinada.');
 });

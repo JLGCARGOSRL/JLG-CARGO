@@ -5,7 +5,7 @@ export type Operation = keyof typeof OPERATIONS;
 export type Presentation = keyof typeof PRESENTATIONS;
 export type Basis = keyof typeof BASES;
 export type Cargo = { id: string; hbl: string; consignee: string; content: string; boxes: number; kg: number; m3: number; pallets: number };
-export type Charge = { id: string; name: string; basis: Basis; quantity: number; included: number; minimum: number; cost: number | null; price: number | null; tax: number; notes: string; reference?: { supplier: 'MARDOM'; document: string; date: string; unit: string; price: number; provisional: true } };
+export type Charge = { id: string; name: string; basis: Basis; quantity: number; included: number; minimum: number; cost: number | null; price: number | null; tax: number; notes: string };
 export type QuoteDraft = {
   customer_id: string; operation: Operation; presentation: Presentation; currency: 'USD' | 'DOP'; valid_until: string;
   shipment: { container: string; size: string; master_bl: string; manifest: string; port: string; dispatches: number };
@@ -25,30 +25,32 @@ export function structure(operation: Operation, presentation: Presentation): Cha
       : [`Recepción de ${handling}`, 'Preparación, llenado y estiba del contenedor'];
   return [...names.map(name => newCharge(name)), newCharge('Despachos', 'dispatches')];
 }
-// Reference amounts from one invoice, not a provider tariff by volume or HBL.
-export function provisionalStructure(operation: Operation, presentation: Presentation): Charge[] {
-  const observed: [string, number, string][] = [
-    ['Almacenaje seco', 994.89, 'M²'],
-    ['Servicio de interconexión', 1489, 'BL'],
-    ['Verificación', 1786.80, 'Unidad'],
-    ['Emisión de tarja', 4467, 'Unidad'],
-    ['Manejo logístico', 886.07, 'Unidad'],
-    ['Seguro de mercancía', 35.68, 'Unidad'],
+// Default selling prices in DOP. Operational services without a rate remain unpriced.
+export function tariffStructure(operation: Operation, presentation: Presentation): Charge[] {
+  const prices: [string, number][] = [
+    ['Almacenaje seco', 945.15],
+    ['Servicio de interconexión', 1414.55],
+    ['Verificación', 1697.46],
+    ['Emisión de tarja', 4243.65],
+    ['Manejo logístico', 841.77],
+    ['Seguro de mercancía', 33.90],
   ];
-  const references = observed.map(([name, price, unit]): Charge => ({
-    ...newCharge(name, 'manual'), price, tax: 18,
-    notes: `Tarifa provisional MARDOM: ${price.toFixed(2)} DOP por ${unit}; cantidad de referencia 1. Revisar alcance y cantidad de esta operación.`,
-    reference: { supplier: 'MARDOM', document: 'FAC547460', date: '2026-05-29', unit, price, provisional: true },
-  }));
-  // The supplied import invoice does not establish a complete cross-docking
-  // or export rate. Keep the specialized services explicitly unpriced.
-  return operation === 'deconsolidation' ? references : [...structure(operation, presentation), ...references];
+  const services = prices.map(([name, price]): Charge => ({ ...newCharge(name, 'manual'), price, tax: 18 }));
+  return operation === 'deconsolidation' ? services : [...structure(operation, presentation), ...services];
 }
+// Strip retired automatic text from older drafts without changing their prices.
 export function cleanQuotationConditions(value: string): string {
-  return value.replace('Tarifas provisionales basadas en la factura MARDOM FAC547460 del 29/05/2026, en DOP. Cantidades e importes sujetos al alcance de esta operación. El almacenaje no establece días libres ni una tarifa por M³/día. Servicios no detallados se cotizan por separado.', '').trim();
+  return value.split('\n').filter(line => !/\b(?:MARDOM|FAC547460)\b/i.test(line)).join('\n').trim();
+}
+export function cleanQuotationCharges(charges: Charge[]): Charge[] {
+  return charges.map(line => {
+    const clean = { ...line };
+    delete (clean as Charge & { reference?: unknown }).reference;
+    return { ...clean, name: cleanQuotationConditions(clean.name) || 'Servicio', notes: cleanQuotationConditions(clean.notes) };
+  });
 }
 export function newDraft(): QuoteDraft {
-  return { customer_id: '', operation: 'deconsolidation', presentation: 'loose', currency: 'DOP', valid_until: '', shipment: { container: '', size: '40HC', master_bl: '', manifest: '', port: '', dispatches: 1 }, cargo: [newCargo()], charges: provisionalStructure('deconsolidation', 'loose'), conditions: '' };
+  return { customer_id: '', operation: 'deconsolidation', presentation: 'loose', currency: 'DOP', valid_until: '', shipment: { container: '', size: '40HC', master_bl: '', manifest: '', port: '', dispatches: 1 }, cargo: [newCargo()], charges: tariffStructure('deconsolidation', 'loose'), conditions: '' };
 }
 export function cargoTotals(cargo: Cargo[]) {
   return cargo.reduce((sum, item) => ({ boxes: sum.boxes + item.boxes, kg: sum.kg + item.kg, m3: sum.m3 + item.m3, pallets: sum.pallets + item.pallets }), { boxes: 0, kg: 0, m3: 0, pallets: 0 });
